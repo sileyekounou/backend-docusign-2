@@ -4,6 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+const morgan = require('morgan')
 require("dotenv").config();
 
 // Import des routes
@@ -24,6 +25,7 @@ const corsOptions = {
 // Middleware de sécurité
 app.use(helmet());
 app.use(cors(corsOptions));
+app.use(morgan('dev'));
 
 // Rate limiting
 const limiter = rateLimit({

@@ -56,6 +56,22 @@ const validationIdSignature = [
   param("id").isMongoId().withMessage("ID de signature invalide"),
 ];
 
+
+/**
+ * @route   POST /api/signatures/webhook/dropbox-sign
+ * @desc    Webhook pour recevoir les événements de Dropbox Sign
+ * @access  Public (avec vérification de signature)
+ */
+router.post(
+  "/webhook/dropbox-sign",
+  // Pas de middleware d'authentification pour les webhooks
+  (req, res, next) => {
+    // Bypass auth pour les webhooks
+    next();
+  },
+  signatureController.webhookDropboxSign
+);
+
 // Toutes les routes nécessitent une authentification
 router.use(authMiddleware.authentifier);
 
@@ -175,7 +191,8 @@ router.get(
   ],
   async (req, res) => {
     try {
-      const { page = 1, limite = 10, statut, dateDebut, dateFin } = req.query;
+      const { page = 1, limite = 10, statut, dateDebut, dateFin,  } = req.query;
+      // const filtres = { ...filtres };
 
       const Signature = require("../models/Signature");
 
@@ -215,8 +232,8 @@ router.get(
       const limit = parseInt(options.limit) || 10;
       const skip = (page - 1) * limit;
 
-      const totalDocs = await Signature.countDocuments(filtres);
-      const docs = await Signature.find(filtres)
+      const totalDocs = await Signature.countDocuments(filtre);
+      const docs = await Signature.find(filtre)
         .populate(options.populate)
         .sort(options.sort)
         .skip(skip)
@@ -352,20 +369,6 @@ router.get("/dashboard/stats", async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/signatures/webhook/dropbox-sign
- * @desc    Webhook pour recevoir les événements de Dropbox Sign
- * @access  Public (avec vérification de signature)
- */
-router.post(
-  "/webhook/dropbox-sign",
-  // Pas de middleware d'authentification pour les webhooks
-  (req, res, next) => {
-    // Bypass auth pour les webhooks
-    next();
-  },
-  signatureController.webhookDropboxSign
-);
 
 /**
  * @route   POST /api/signatures/sync/dropbox-sign

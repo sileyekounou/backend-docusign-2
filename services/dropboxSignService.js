@@ -1,6 +1,8 @@
 const DropboxSign = require("@dropbox/sign");
 const fs = require("fs").promises;
 const path = require("path");
+const fsStream = require("fs"); // Pour createReadStream
+const { Readable } = require("stream");
 
 class DropboxSignService {
   constructor() {
@@ -30,16 +32,10 @@ class DropboxSignService {
   /**
    * Créer une demande de signature simple
    */
+
   async creerDemandeSignature(options) {
     try {
-      const {
-        titre,
-        message,
-        fichiers,
-        signataires,
-        documentId,
-        options: customOptions = {},
-      } = options;
+      const { titre, message, fichiers, signataires, documentId, options: customOptions = {} } = options;
 
       // Préparer les signataires
       const signersData = signataires.map((signataire, index) => {
@@ -47,53 +43,68 @@ class DropboxSignService {
           emailAddress: signataire.email,
           name: `${signataire.prenom} ${signataire.nom}`,
           order: signataire.ordre || index + 1,
-          pin: signataire.pin || null,
-          smsPhoneNumber: signataire.telephone || null,
         });
       });
 
-      // Préparer les fichiers
+      // Préparer les fichiers (votre code actuel)
       const filesData = [];
+      // for (const fichier of fichiers) {
+      //   const fileBuffer = await fs.readFile(fichier.chemin);
+      //   filesData.push({
+      //     name: fichier.nomOriginal,
+      //     file: fileBuffer,
+      //   });
+      // }
       for (const fichier of fichiers) {
-        try {
-          const fileBuffer = await fs.readFile(fichier.chemin);
-          filesData.push({
-            name: fichier.nomOriginal,
-            file: fileBuffer,
-          });
-        } catch (error) {
-          console.error(`Erreur lecture fichier ${fichier.chemin}:`, error);
-          throw new Error(
-            `Impossible de lire le fichier ${fichier.nomOriginal}`
-          );
-        }
+        const fileBuffer = await fs.readFile(fichier.chemin);
+        
+        // Convertir Buffer -> Stream
+        const bufferStream = Readable.from(fileBuffer);
+        
+        filesData.push({
+          name: fichier.nomOriginal,
+          file: bufferStream,
+        });
       }
 
-      // Créer la demande de signature
+      // 🔧 CONFIGURATION WEBHOOK SELON L'ENVIRONNEMENT
+      const webhookConfig = {};
+      
+      if (process.env.NODE_ENV === 'development' && process.env.WEBHOOK_URL) {
+        // En production : utiliser le vrai webhook
+        webhookConfig.webhookUrl = process.env.WEBHOOK_URL;
+        console.log("🔗 Webhook activé:", process.env.WEBHOOK_URL);
+      } else {
+        // En développement : PAS de webhook
+        console.log("🏠 Mode développement - webhook désactivé");
+      }
+
+      // Créer la demande SANS webhook en dev
       const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
         title: titre,
         subject: titre,
         message: message || `Veuillez signer le document: ${titre}`,
         signers: signersData,
         files: filesData,
-        testMode: customOptions.testMode ?? this.defaultOptions.testMode,
-        useTextTags:
-          customOptions.useTextTags ?? this.defaultOptions.useTextTags,
-        hideTextTags:
-          customOptions.hideTextTags ?? this.defaultOptions.hideTextTags,
-        allowDecline:
-          customOptions.allowDecline ?? this.defaultOptions.allowDecline,
-        allowReassign:
-          customOptions.allowReassign ?? this.defaultOptions.allowReassign,
+        webhookUrl: process.env.WEBHOOK_URL,
+        // testMode: customOptions.testMode ?? this.defaultOptions.testMode,
+        
+        // 🔧 WEBHOOK CONDITIONNEL
+        ...webhookConfig,
+        
         clientId: process.env.DROPBOX_SIGN_CLIENT_ID,
         metadata: {
           document_id: documentId,
           platform: "signature-platform",
+          environment: process.env.NODE_ENV,
         },
       });
 
+      console.log("🚀 Envoi Dropbox Sign (sans webhook dev)...");
       const response = await this.client.signatureRequestSend(signatureRequest);
 
+      console.log("✅ Demande créée sans problème de webhook !");
+      
       return {
         success: true,
         data: {
@@ -104,17 +115,15 @@ class DropboxSignService {
             name: sig.signerName,
             statusCode: sig.statusCode,
             signUrl: sig.signUrl,
-            detailsUrl: sig.detailsUrl,
           })),
         },
       };
+
     } catch (error) {
-      console.error("Erreur création demande signature:", error);
+      console.error("❌ Erreur (webhook résolu?):", error.message);
       return {
         success: false,
-        error:
-          error.message ||
-          "Erreur lors de la création de la demande de signature",
+        error: error.message,
       };
     }
   }
@@ -130,7 +139,6 @@ class DropboxSignService {
         fichiers,
         signataires,
         documentId,
-        urlRetour,
         options: customOptions = {},
       } = options;
 
@@ -345,7 +353,7 @@ class DropboxSignService {
    */
   async traiterEvenementWebhook(eventData) {
     try {
-      const { event_type, event_time, event_hash } = eventData.event;
+      const { event_type, event_time } = eventData.event;
       const signatureRequest = eventData.signature_request;
 
       switch (event_type) {

@@ -675,12 +675,51 @@ exports.obtenirStatistiquesSignatures = async (req, res) => {
 /**
  * Webhook pour recevoir les événements de Dropbox Sign
  */
+// exports.webhookDropboxSign = async (req, res) => {
+//   try {
+//     const signature = req.get("X-HelloSign-Signature");
+//     const body = JSON.stringify(req.body);
+
+//     // Vérifier la signature du webhook
+//     if (!dropboxSignService.verifierSignatureWebhook(body, signature)) {
+//       console.error("Signature webhook invalide");
+//       return res.status(401).json({
+//         success: false,
+//         message: "Signature webhook invalide",
+//       });
+//     }
+
+//     // Traiter l'événement
+//     const resultat = await dropboxSignService.traiterEvenementWebhook(req.body);
+
+//     if (resultat.success) {
+//       // Synchroniser avec notre base de données
+//       await this.synchroniserAvecDropboxSign(req.body);
+
+//       res.json({ success: true });
+//     } else {
+//       console.error("Erreur traitement webhook:", resultat.error);
+//       res.status(500).json({
+//         success: false,
+//         message: "Erreur traitement webhook",
+//       });
+//     }
+//   } catch (error) {
+//     console.error("Erreur webhook:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Erreur webhook",
+//     });
+//   }
+// };
+
 exports.webhookDropboxSign = async (req, res) => {
   try {
+    // Vérifier la signature Dropbox Sign (pas JWT)
     const signature = req.get("X-HelloSign-Signature");
     const body = JSON.stringify(req.body);
 
-    // Vérifier la signature du webhook
+    // Vérifier avec la clé secrète Dropbox Sign
     if (!dropboxSignService.verifierSignatureWebhook(body, signature)) {
       console.error("Signature webhook invalide");
       return res.status(401).json({
@@ -693,12 +732,9 @@ exports.webhookDropboxSign = async (req, res) => {
     const resultat = await dropboxSignService.traiterEvenementWebhook(req.body);
 
     if (resultat.success) {
-      // Synchroniser avec notre base de données
       await this.synchroniserAvecDropboxSign(req.body);
-
       res.json({ success: true });
     } else {
-      console.error("Erreur traitement webhook:", resultat.error);
       res.status(500).json({
         success: false,
         message: "Erreur traitement webhook",

@@ -347,6 +347,117 @@ documentSchema.virtual("fichierComplet").get(function () {
   };
 });
 
+// Ajoutez ces méthodes dans models/Document.js
+
+// AJOUTEZ ces méthodes à la fin de models/Document.js (avant module.exports)
+
+/**
+ * Créer les signatures associées au document
+ */
+documentSchema.methods.creerSignatures = async function(creeParUtilisateur) {
+  const Signature = require("./Signature");
+  
+  const signatures = [];
+  
+  for (const workflowItem of this.workflowSignature) {
+    const signature = new Signature({
+      document: this._id,
+      signataire: workflowItem.utilisateur,
+      statut: "en_attente",
+      ordreSignature: workflowItem.ordre,
+      creeParUtilisateur: creeParUtilisateur,
+      dateExpiration: this.dateLimiteSignature || null,
+    });
+    
+    signature.ajouterHistorique(
+      "creation", 
+      creeParUtilisateur, 
+      "Signature créée avec le document"
+    );
+    
+    await signature.save();
+    signatures.push(signature);
+  }
+  
+  return signatures;
+};
+
+/**
+ * Vérifier la cohérence entre workflow et signatures
+ */
+documentSchema.methods.verifierCoherenceSignatures = async function() {
+  const Signature = require("./Signature");
+  
+  const signaturesExistantes = await Signature.find({ document: this._id });
+  
+  const incohérences = [];
+  
+  // Vérifier que chaque item du workflow a une signature correspondante
+  for (const workflowItem of this.workflowSignature) {
+    const signatureCorrespondante = signaturesExistantes.find(
+      sig => sig.signataire.toString() === workflowItem.utilisateur.toString()
+    );
+    
+    if (!signatureCorrespondante) {
+      incohérences.push({
+        type: "signature_manquante",
+        utilisateur: workflowItem.utilisateur,
+        ordre: workflowItem.ordre
+      });
+    }
+  }
+  
+  // Vérifier qu'il n'y a pas de signatures orphelines
+  for (const signature of signaturesExistantes) {
+    const workflowCorrespondant = this.workflowSignature.find(
+      w => w.utilisateur.toString() === signature.signataire.toString()
+    );
+    
+    if (!workflowCorrespondant) {
+      incohérences.push({
+        type: "signature_orpheline",
+        signatureId: signature._id,
+        signataire: signature.signataire
+      });
+    }
+  }
+  
+  return incohérences;
+};
+
+/**
+ * Synchroniser les statuts entre workflow et signatures
+ */
+documentSchema.methods.synchroniserStatutsSignatures = async function() {
+  const Signature = require("./Signature");
+  
+  const signatures = await Signature.find({ document: this._id })
+    .populate("signataire");
+  
+  let miseAJourEffectuee = false;
+  
+  // Mettre à jour le workflow selon les signatures
+  for (const signature of signatures) {
+    const workflowItem = this.workflowSignature.find(
+      w => w.utilisateur.toString() === signature.signataire._id.toString()
+    );
+    
+    if (workflowItem && workflowItem.statut !== signature.statut) {
+      workflowItem.statut = signature.statut;
+      if (signature.dateSignature) {
+        workflowItem.dateSignature = signature.dateSignature;
+      }
+      miseAJourEffectuee = true;
+    }
+  }
+  
+  if (miseAJourEffectuee) {
+    await this.save();
+  }
+  
+  return signatures;
+};
+
 documentSchema.set("toJSON", { virtuals: true });
 
 module.exports = mongoose.model("Document", documentSchema);

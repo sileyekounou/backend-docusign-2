@@ -430,6 +430,11 @@ exports.mettreAJourDocument = async (req, res) => {
 /**
  * Envoyer un document pour signature
  */
+
+/**
+ * Envoyer un document pour signature - VERSION FINALE INTÉGRÉE
+ * REMPLACEZ votre fonction actuelle par celle-ci
+ */
 exports.envoyerPourSignature = async (req, res) => {
   try {
     const { id } = req.params;
@@ -439,11 +444,16 @@ exports.envoyerPourSignature = async (req, res) => {
       .populate("workflowSignature.utilisateur");
 
     if (!document) {
+      console.log("❌ Document non trouvé avec ID:", id);
       return res.status(404).json({
         success: false,
         message: "Document non trouvé",
       });
     }
+
+    console.log("✅ Document trouvé:", document.titre);
+    console.log("   Statut:", document.statut);
+    console.log("   Workflow:", document.workflowSignature?.length || 0, "étapes");
 
     // Vérifier les permissions
     if (!document.peutEtreModifiePar(req.user)) {
@@ -454,10 +464,7 @@ exports.envoyerPourSignature = async (req, res) => {
     }
 
     // Vérifier que le workflow est configuré
-    if (
-      !document.workflowSignature ||
-      document.workflowSignature.length === 0
-    ) {
+    if (!document.workflowSignature || document.workflowSignature.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Aucun workflow de signature configuré",
@@ -472,80 +479,166 @@ exports.envoyerPourSignature = async (req, res) => {
       });
     }
 
-    try {
-      // Préparer les données pour Dropbox Sign
-      const signataires = document.workflowSignature
-        .filter((w) => w.statut === "en_attente")
-        .sort((a, b) => a.ordre - b.ordre)
-        .map((w) => ({
-          email: w.utilisateur.email,
-          nom: w.utilisateur.nom,
-          prenom: w.utilisateur.prenom,
-          ordre: w.ordre,
-        }));
+    // 🔧 CORRECTION PRINCIPALE : Créer les signatures AVANT tout
+    console.log("🔧 Création des signatures locales...");
+    const Signature = require("../models/Signature");
+    const signaturesCreees = [];
 
-      const optionsSignature = {
-        titre: document.titre,
-        message: `Veuillez signer le document: ${document.titre}`,
-        fichiers: [
-          {
-            chemin: document.fichier.chemin,
-            nomOriginal: document.fichier.nomOriginal,
-          },
-        ],
-        signataires,
-        documentId: document._id.toString(),
-      };
+    // Vérifier s'il y a déjà des signatures
+    const signaturesExistantes = await Signature.find({ document: document._id });
+    
+    if (signaturesExistantes.length === 0) {
+      // Créer toutes les signatures
+      for (const workflowItem of document.workflowSignature) {
+        const nouvelleSignature = new Signature({
+          document: document._id,
+          signataire: workflowItem.utilisateur._id,
+          statut: "en_attente",
+          ordreSignature: workflowItem.ordre,
+          creeParUtilisateur: req.user._id,
+          dateExpiration: document.dateLimiteSignature || null,
+        });
 
-      // Créer la demande de signature via Dropbox Sign
-      const resultatDropbox = await dropboxSignService.creerDemandeSignature(
-        optionsSignature
-      );
+        nouvelleSignature.ajouterHistorique(
+          "creation",
+          req.user._id,
+          "Signature créée lors de l'envoi pour signature"
+        );
 
-      if (!resultatDropbox.success) {
-        throw new Error(resultatDropbox.error);
+        await nouvelleSignature.save();
+        signaturesCreees.push(nouvelleSignature);
       }
-
-      // Mettre à jour le document avec les données Dropbox Sign
-      document.dropboxSign = {
-        signatureRequestId: resultatDropbox.data.signatureRequestId,
-        testMode: process.env.NODE_ENV !== "production",
-      };
-
-      // Mettre à jour le statut
-      document.statut = "en_attente_signature";
-
-      // Ajouter à l'historique
-      document.ajouterHistorique(
-        "signature",
-        req.user._id,
-        "Document envoyé pour signature"
-      );
-
-      await document.save();
-
-      res.json({
-        success: true,
-        message: "Document envoyé pour signature avec succès",
-        data: {
-          document,
-          dropboxSignData: resultatDropbox.data,
-        },
-      });
-    } catch (dropboxError) {
-      console.error("Erreur Dropbox Sign:", dropboxError);
-
-      return res.status(500).json({
-        success: false,
-        message: "Erreur lors de l'envoi via Dropbox Sign",
-        error: dropboxError.message,
-      });
+      console.log(`✅ ${signaturesCreees.length} signatures créées`);
+    } else {
+      console.log(`✅ ${signaturesExistantes.length} signatures déjà existantes`);
+      signaturesCreees.push(...signaturesExistantes);
     }
+
+    // 🔧 OPTIONNEL : Intégration Dropbox Sign (si vous l'utilisez)
+    try {
+      // Seulement si vous voulez utiliser Dropbox Sign
+      if (process.env.DROPBOX_SIGN_API_KEY) {
+        const signataires = document.workflowSignature
+          .filter((w) => w.statut === "en_attente")
+          .sort((a, b) => a.ordre - b.ordre)
+          .map((w) => ({
+            email: w.utilisateur.email,
+            nom: w.utilisateur.nom,
+            prenom: w.utilisateur.prenom,
+            ordre: w.ordre,
+          }));
+
+        const optionsSignature = {
+          titre: document.titre,
+          message: `Veuillez signer le document: ${document.titre}`,
+          fichiers: [
+            {
+              chemin: document.fichier.chemin,
+              nomOriginal: document.fichier.nomOriginal,
+            },
+          ],
+          signataires,
+          documentId: document._id.toString(),
+        };
+
+        const resultatDropbox = await dropboxSignService.creerDemandeSignature(
+          optionsSignature
+        );
+
+        if (resultatDropbox.success) {
+          // Mettre à jour avec les données Dropbox
+          document.dropboxSign = {
+            signatureRequestId: resultatDropbox.data.signatureRequestId,
+            testMode: process.env.NODE_ENV !== "production",
+          };
+
+          // Mettre à jour les signatures avec les IDs Dropbox
+          for (let i = 0; i < signaturesCreees.length; i++) {
+            const signature = signaturesCreees[i];
+            const signatureDropbox = resultatDropbox.data.signers?.find(
+              signer => signer.email === document.workflowSignature[i].utilisateur.email
+            );
+            
+            if (signatureDropbox) {
+              signature.dropboxSign = {
+                signatureId: signatureDropbox.signerId,
+                signatureRequestId: resultatDropbox.data.signatureRequestId,
+                signerId: signatureDropbox.signerId,
+                statusCode: "awaiting_signature",
+                signUrl: signatureDropbox.signUrl,
+              };
+              await signature.save();
+            }
+          }
+        }
+      }
+      // console.log("🎉 Envoi réponse au frontend");
+      // console.log("✅ === FIN envoyerPourSignature ===");
+
+    } catch (dropboxError) {
+      console.warn("⚠️ Erreur Dropbox Sign (ignorée):", dropboxError.message);
+      // Continuer même si Dropbox échoue
+    }
+
+    // Mettre à jour le document
+    document.statut = "en_attente_signature";
+    document.ajouterHistorique(
+      "signature",
+      req.user._id,
+      `Document envoyé pour signature à ${signaturesCreees.length} signataire(s)`
+    );
+
+    await document.save();
+
+    // Envoyer les notifications
+    try {
+      const notificationService = require("../utils/notifications");
+      for (const signature of signaturesCreees) {
+        await signature.populate("signataire", "nom prenom email");
+        await notificationService.notifierNouvelleSignature(document, signature.signataire);
+      }
+    } catch (notifError) {
+      console.warn("⚠️ Erreur notifications:", notifError.message);
+    }
+
+    // Réponse
+    await Promise.all(signaturesCreees.map(sig => 
+      sig.populate("signataire", "nom prenom email")
+    ));
+
+    res.json({
+      success: true,
+      message: "Document envoyé pour signature avec succès",
+      data: {
+        document: {
+          _id: document._id,
+          titre: document.titre,
+          statut: document.statut,
+        },
+        signatures: signaturesCreees.map(sig => ({
+          _id: sig._id,
+          signataire: {
+            _id: sig.signataire._id,
+            nom: sig.signataire.nom,
+            prenom: sig.signataire.prenom,
+            email: sig.signataire.email,
+          },
+          statut: sig.statut,
+          ordreSignature: sig.ordreSignature,
+        })),
+      },
+    });
+    console.log("🎉 Envoi réponse au frontend");
+    console.log("✅ === FIN envoyerPourSignature ===");
+
   } catch (error) {
+    console.error("💥 ERREUR dans envoyerPourSignature:", error.message);
+    console.error("Stack:", error.stack);
     console.error("Erreur envoi signature:", error);
     res.status(500).json({
       success: false,
       message: "Erreur lors de l'envoi pour signature",
+      debug: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

@@ -140,14 +140,22 @@ const userSchema = new mongoose.Schema(
 
 // Index pour optimiser les recherches
 userSchema.index({ email: 1 }, { unique: true });
+// userSchema.index(
+//   { numeroEtudiant: 1 },
+//   {
+//     unique: true,
+//     sparse: true,
+//     partialFilterExpression: {
+//       numeroEtudiant: { $exists: true, $ne: null, $ne: "" },
+//     },
+//   }
+// );
+
 userSchema.index(
-  { numeroEtudiant: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: {
-      numeroEtudiant: { $exists: true, $ne: null, $ne: "" },
-    },
+  { numeroEtudiant: 1 }, 
+  { 
+    unique: true, 
+    sparse: true  // Seulement sparse, pas de partialFilterExpression
   }
 );
 userSchema.index({ role: 1 });
