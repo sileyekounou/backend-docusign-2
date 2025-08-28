@@ -249,7 +249,26 @@ exports.obtenirDocuments = async (req, res) => {
       ],
     };
 
-    const documents = await Document.paginate(filtres, options);
+    // const documents = await Document.paginate(filtres, options);
+    const limit = parseInt(options.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const totalDocs = await Document.countDocuments(filtres);
+    const docs = await Document.find(filtres)
+      .populate(options.populate)
+      .sort(options.sort)
+      .skip(skip)
+      .limit(limit);
+
+    const documents = {
+      docs,
+      totalDocs,
+      limit,
+      page,
+      totalPages: Math.ceil(totalDocs / limit),
+      hasNextPage: page < Math.ceil(totalDocs / limit),
+      hasPrevPage: page > 1
+    };
 
     res.json({
       success: true,

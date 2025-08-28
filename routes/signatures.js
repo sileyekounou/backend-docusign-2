@@ -211,7 +211,26 @@ router.get(
         ],
       };
 
-      const signatures = await Signature.paginate(filtre, options);
+      // const signatures = await Signature.paginate(filtre, options);
+      const limit = parseInt(options.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      const totalDocs = await Signature.countDocuments(filtres);
+      const docs = await Signature.find(filtres)
+        .populate(options.populate)
+        .sort(options.sort)
+        .skip(skip)
+        .limit(limit);
+
+      const signatures = {
+        docs,
+        totalDocs,
+        limit,
+        page,
+        totalPages: Math.ceil(totalDocs / limit),
+        hasNextPage: page < Math.ceil(totalDocs / limit),
+        hasPrevPage: page > 1
+      };
 
       res.json({
         success: true,
