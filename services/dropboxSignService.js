@@ -38,47 +38,45 @@ class DropboxSignService {
       const { titre, message, fichiers, signataires, documentId, options: customOptions = {} } = options;
 
       // Préparer les signataires
+      // const signersData = signataires.map((signataire, index) => {
+      //   return DropboxSign.SubSigningOptions.init({
+      //     emailAddress: signataire.email,
+      //     name: `${signataire.prenom} ${signataire.nom}`,
+      //     order: signataire.ordre || index + 1,
+      //   });
+      // });
       const signersData = signataires.map((signataire, index) => {
+        if (!signataire.email || !signataire.nom || !signataire.prenom) {
+          throw new Error(`Données signataire incomplètes: ${JSON.stringify(signataire)}`);
+        }
+        
         return DropboxSign.SubSigningOptions.init({
-          emailAddress: signataire.email,
-          name: `${signataire.prenom} ${signataire.nom}`,
+          emailAddress: signataire.email.trim(),
+          name: `${signataire.prenom.trim()} ${signataire.nom.trim()}`,
           order: signataire.ordre || index + 1,
         });
       });
 
       // Préparer les fichiers (votre code actuel)
-      const filesData = [];
-      // for (const fichier of fichiers) {
-      //   const fileBuffer = await fs.readFile(fichier.chemin);
-      //   filesData.push({
-      //     name: fichier.nomOriginal,
-      //     file: fileBuffer,
-      //   });
-      // }
+      // ✅ CORRIGER
       for (const fichier of fichiers) {
-        const fileBuffer = await fs.readFile(fichier.chemin);
-        
-        // Convertir Buffer -> Stream
-        const bufferStream = Readable.from(fileBuffer);
-        
-        filesData.push({
-          name: fichier.nomOriginal,
-          file: bufferStream,
-        });
+        try {
+          const fileBuffer = await fs.readFile(fichier.chemin);
+          
+          // Vérifier que le fichier n'est pas vide
+          if (fileBuffer.length === 0) {
+            throw new Error(`Fichier vide: ${fichier.nomOriginal}`);
+          }
+          
+          filesData.push({
+            name: fichier.nomOriginal,
+            file: fileBuffer, // Utiliser directement le Buffer
+          });
+        } catch (error) {
+          console.error(`Erreur lecture fichier ${fichier.chemin}:`, error);
+          throw new Error(`Impossible de lire le fichier: ${fichier.nomOriginal}`);
+        }
       }
-
-      // 🔧 CONFIGURATION WEBHOOK SELON L'ENVIRONNEMENT
-      const webhookConfig = {};
-      
-      if (process.env.NODE_ENV === 'development' && process.env.WEBHOOK_URL) {
-        // En production : utiliser le vrai webhook
-        webhookConfig.webhookUrl = process.env.WEBHOOK_URL;
-        console.log("🔗 Webhook activé:", process.env.WEBHOOK_URL);
-      } else {
-        // En développement : PAS de webhook
-        console.log("🏠 Mode développement - webhook désactivé");
-      }
-
       // Créer la demande SANS webhook en dev
       const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
         title: titre,
@@ -86,7 +84,7 @@ class DropboxSignService {
         message: message || `Veuillez signer le document: ${titre}`,
         signers: signersData,
         files: filesData,
-        webhookUrl: process.env.WEBHOOK_URL,
+        // webhookUrl: process.env.WEBHOOK_URL,
         // testMode: customOptions.testMode ?? this.defaultOptions.testMode,
         
         // 🔧 WEBHOOK CONDITIONNEL

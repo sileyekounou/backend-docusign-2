@@ -23,6 +23,7 @@ const corsOptions = {
 };
 
 // Middleware de sécurité
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(morgan('dev'));

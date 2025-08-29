@@ -471,6 +471,15 @@ exports.envoyerPourSignature = async (req, res) => {
       });
     }
 
+    for (const workflowItem of document.workflowSignature) {
+      if (!workflowItem.utilisateur) {
+        return res.status(400).json({
+          success: false,
+          message: "Utilisateur manquant dans le workflow de signature",
+        });
+      }
+    }
+
     // Vérifier que le document n'est pas déjà en cours de signature
     if (document.statut !== "brouillon") {
       return res.status(400).json({
@@ -483,6 +492,7 @@ exports.envoyerPourSignature = async (req, res) => {
     console.log("🔧 Création des signatures locales...");
     const Signature = require("../models/Signature");
     const signaturesCreees = [];
+    await document.populate("workflowSignature.utilisateur");
 
     // Vérifier s'il y a déjà des signatures
     const signaturesExistantes = await Signature.find({ document: document._id });
