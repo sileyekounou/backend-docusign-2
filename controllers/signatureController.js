@@ -716,11 +716,16 @@ exports.obtenirStatistiquesSignatures = async (req, res) => {
 exports.webhookDropboxSign = async (req, res) => {
   try {
     // Vérifier la signature Dropbox Sign (pas JWT)
-    const signature = req.get("X-HelloSign-Signature");
-    const body = JSON.stringify(req.body);
+    // const signature = req.get("X-HelloSign-Signature");
+    // const signature = req.get("content-md5");
+    // const signature = req.get("content-sha256");
+    // const body = JSON.stringify(req.body);
+    // console.log(`Signature: ${signature}`)
+    // console.log(`Body: ${body}`)
 
     // Vérifier avec la clé secrète Dropbox Sign
-    if (!dropboxSignService.verifierSignatureWebhook(body, signature)) {
+    if (!dropboxSignService.verifierSignatureWebhook(req)) {
+    // if (!dropboxSignService.verifierSignatureWebhook(body, signature)) {
       console.error("Signature webhook invalide");
       return res.status(401).json({
         success: false,
@@ -748,6 +753,93 @@ exports.webhookDropboxSign = async (req, res) => {
     });
   }
 };
+
+// exports.webhookDropboxSign = async (req, res) => {
+//   try {
+//     // 🔍 Debug des headers
+//     console.log("📥 Tous les headers:", req.headers);
+    
+//     // ✅ Essayer différentes variantes du header
+//     const signature = req.get("X-HelloSign-Signature") || 
+//                      req.get("x-hellosign-signature") ||
+//                      req.headers['x-hellosign-signature'] ||
+//                      req.headers['X-HelloSign-Signature'];
+    
+//     console.log(`🔐 Signature trouvée: ${signature}`);
+    
+//     if (!signature) {
+//       console.error("❌ Aucune signature trouvée dans les headers");
+//       console.log("📋 Headers disponibles:", Object.keys(req.headers));
+//       return res.status(401).json({
+//         success: false,
+//         message: "Signature manquante",
+//       });
+//     }
+
+//     // ✅ Gérer le body selon le type
+//     let bodyString;
+//     if (Buffer.isBuffer(req.body)) {
+//       // Body brut (avec express.raw)
+//       bodyString = req.body.toString('utf8');
+//     } else if (typeof req.body === 'string') {
+//       // Body déjà en string
+//       bodyString = req.body;
+//     } else {
+//       // Body déjà parsé en objet
+//       bodyString = JSON.stringify(req.body);
+//     }
+
+//     console.log(`📦 Body préparé (${bodyString.length} chars):`, bodyString.substring(0, 200) + '...');
+
+//     // ✅ Vérifier la signature
+//     console.log(`🔧 Vérification signature...`);
+//     const isValidSignature = dropboxSignService.verifierSignatureWebhook(bodyString, signature);
+//     console.log(`✅ Signature valide: ${isValidSignature}`);
+
+//     if (!isValidSignature) {
+//       console.error("❌ Signature webhook invalide");
+//       return res.status(401).json({
+//         success: false,
+//         message: "Signature webhook invalide",
+//       });
+//     }
+
+//     // ✅ Parser le body si nécessaire
+//     let eventData;
+//     if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+//       eventData = req.body;
+//     } else {
+//       try {
+//         eventData = JSON.parse(bodyString);
+//       } catch (parseError) {
+//         console.error("❌ Erreur parsing JSON:", parseError);
+//         return res.status(400).json({
+//           success: false,
+//           message: "JSON invalide",
+//         });
+//       }
+//     }
+
+//     // Traiter l'événement
+//     const resultat = await dropboxSignService.traiterEvenementWebhook(eventData);
+
+//     if (resultat.success) {
+//       await this.synchroniserAvecDropboxSign(eventData);
+//       res.json({ success: true });
+//     } else {
+//       res.status(500).json({
+//         success: false,
+//         message: "Erreur traitement webhook",
+//       });
+//     }
+//   } catch (error) {
+//     console.error("💥 Erreur webhook:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Erreur webhook",
+//     });
+//   }
+// };
 
 /**
  * Synchroniser les données avec Dropbox Sign

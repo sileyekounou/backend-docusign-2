@@ -58,6 +58,7 @@ class DropboxSignService {
       });
 
       // Préparer les fichiers (votre code actuel)
+      let filesData = []
       // ✅ CORRIGER
       for (const fichier of fichiers) {
         try {
@@ -336,14 +337,31 @@ class DropboxSignService {
   /**
    * Vérifier la signature d'un webhook
    */
-  verifierSignatureWebhook(body, signature) {
+  // verifierSignatureWebhook(body, signature) {
+  //   const crypto = require("crypto");
+  //   const expectedSignature = crypto
+  //     .createHmac("md5", process.env.DROPBOX_SIGN_WEBHOOK_SECRET)
+  //     // .createHmac("sha256", process.env.DROPBOX_SIGN_WEBHOOK_SECRET)
+  //     .update(body)
+  //     .digest("base64");
+  //     // .digest("hex");
+
+  //   // console.log(`verifierSignatureWebhook: ${expectedSignature}`);
+
+  //   return `md5=${expectedSignature}` === signature;
+  // }
+
+  verifierSignatureWebhook(req) {
+    const event = JSON.parse(req.body.event); // car c'est une string JSON
+    const eventTime = event.event_time;
+    const eventHash = req.body.event_hash;
     const crypto = require("crypto");
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.DROPBOX_SIGN_WEBHOOK_SECRET)
-      .update(body)
+    const expected = crypto
+      .createHash("sha256")
+      .update(eventTime + process.env.DROPBOX_SIGN_SECRET)
       .digest("hex");
 
-    return `sha256=${expectedSignature}` === signature;
+    return expected === eventHash;
   }
 
   /**

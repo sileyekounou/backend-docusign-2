@@ -1,6 +1,8 @@
 const express = require("express");
 const { body, query, param } = require("express-validator");
 const router = express.Router();
+const multer = require("multer");
+const upload = multer();
 
 const signatureController = require("../controllers/signatureController");
 const authMiddleware = require("../middleware/auth");
@@ -56,21 +58,39 @@ const validationIdSignature = [
   param("id").isMongoId().withMessage("ID de signature invalide"),
 ];
 
-
 /**
  * @route   POST /api/signatures/webhook/dropbox-sign
  * @desc    Webhook pour recevoir les événements de Dropbox Sign
  * @access  Public (avec vérification de signature)
  */
+// router.post(
+//   "/webhook/dropbox-sign",
+//   // Pas de middleware d'authentification pour les webhooks
+//   (req, res, next) => {
+//     // Bypass auth pour les webhooks
+//     next();
+//   },
+//   signatureController.webhookDropboxSign
+// );
 router.post(
   "/webhook/dropbox-sign",
-  // Pas de middleware d'authentification pour les webhooks
+  // ✅ IMPORTANT : Capturer le body brut pour vérifier la signature
+  express.raw({ 
+    type: 'application/json',
+    limit: '50mb'  // Ajustez selon vos besoins
+  }),
+  upload.none(),
   (req, res, next) => {
-    // Bypass auth pour les webhooks
+    // Debug les headers
+    console.log("📥 Headers reçus:", Object.keys(req.headers));
+    console.log("🔐 X-HelloSign-Signature:", req.get("X-HelloSign-Signature"));
+    console.log("📦 Body type:", typeof req.body);
+    console.log("📦 Body length:", req.body ? req.body.length : 'null');
     next();
   },
   signatureController.webhookDropboxSign
 );
+
 
 // Toutes les routes nécessitent une authentification
 router.use(authMiddleware.authentifier);
