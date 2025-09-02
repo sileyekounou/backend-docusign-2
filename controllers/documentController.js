@@ -526,63 +526,6 @@ exports.envoyerPourSignature = async (req, res) => {
 
     // 🔧 OPTIONNEL : Intégration Dropbox Sign (si vous l'utilisez)
     try {
-      // Seulement si vous voulez utiliser Dropbox Sign
-      // if (process.env.DROPBOX_SIGN_API_KEY) {
-      //   const signataires = document.workflowSignature
-      //     .filter((w) => w.statut === "en_attente")
-      //     .sort((a, b) => a.ordre - b.ordre)
-      //     .map((w) => ({
-      //       email: w.utilisateur.email,
-      //       nom: w.utilisateur.nom,
-      //       prenom: w.utilisateur.prenom,
-      //       ordre: w.ordre,
-      //     }));
-
-      //   const optionsSignature = {
-      //     titre: document.titre,
-      //     message: `Veuillez signer le document: ${document.titre}`,
-      //     fichiers: [
-      //       {
-      //         chemin: document.fichier.chemin,
-      //         nomOriginal: document.fichier.nomOriginal,
-      //       },
-      //     ],
-      //     signataires,
-      //     documentId: document._id.toString(),
-      //   };
-
-      //   const resultatDropbox = await dropboxSignService.creerDemandeSignature(
-      //     optionsSignature
-      //   );
-
-      //   if (resultatDropbox.success) {
-      //     // Mettre à jour avec les données Dropbox
-      //     document.dropboxSign = {
-      //       signatureRequestId: resultatDropbox.data.signatureRequestId,
-      //       testMode: process.env.NODE_ENV !== "production",
-      //     };
-
-      //     // Mettre à jour les signatures avec les IDs Dropbox
-      //     for (let i = 0; i < signaturesCreees.length; i++) {
-      //       const signature = signaturesCreees[i];
-      //       const signatureDropbox = resultatDropbox.data.signers?.find(
-      //         signer => signer.email === document.workflowSignature[i].utilisateur.email
-      //       );
-            
-      //       if (signatureDropbox) {
-      //         signature.dropboxSign = {
-      //           signatureId: signatureDropbox.signerId,
-      //           signatureRequestId: resultatDropbox.data.signatureRequestId,
-      //           signerId: signatureDropbox.signerId,
-      //           statusCode: "awaiting_signature",
-      //           signUrl: signatureDropbox.signUrl,
-      //         };
-      //         await signature.save();
-      //       }
-      //     }
-      //   }
-      // }
-      // Dans envoyerPourSignature, remplace cette partie :
       if (process.env.DROPBOX_SIGN_API_KEY) {
         const signataires = document.workflowSignature
           .filter((w) => w.statut === "en_attente")
@@ -617,17 +560,19 @@ exports.envoyerPourSignature = async (req, res) => {
 
         const resultatDropbox = await dropboxSignService.creerDemandeSignature(optionsSignature);
         
-        console.log(`📋 Résultat Dropbox:`, {
-          success: resultatDropbox.success,
-          error: resultatDropbox.error,
-          signatureRequestId: resultatDropbox.data?.signatureRequestId,
-        });
+        console.log("Résultat Dropbox COMPLET:", JSON.stringify(resultatDropbox, null, 2));
 
         if (resultatDropbox.success) {
-          // ... reste du code
+          // Mettre à jour avec les données Dropbox
+          document.dropboxSign = {
+            signatureRequestId: resultatDropbox.data.signatureRequestId,
+            testMode: process.env.NODE_ENV !== "production",
+          };
+          
+          console.log("Document mis à jour avec signatureRequestId:", resultatDropbox.data.signatureRequestId);
+          await document.save();
         } else {
-          console.error("❌ Erreur Dropbox Sign:", resultatDropbox.error);
-          // Continuer même si Dropbox échoue
+          console.error("ECHEC Dropbox Sign:", resultatDropbox.error);
         }
       }
 

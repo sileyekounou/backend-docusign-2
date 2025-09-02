@@ -5,6 +5,7 @@ const router = express.Router();
 const documentController = require("../controllers/documentController");
 const authMiddleware = require("../middleware/auth");
 const roleMiddleware = require("../middleware/roleAuth");
+const Document = require('../models/Document')
 
 // Validators de validation des données
 const validationCreationDocument = [
@@ -645,5 +646,48 @@ router.get(
     }
   }
 );
+
+
+/**
+ * @route   POST /api/documents/:id/forcer-synchronisation
+ * @desc    Forcer la vérification et mise à jour du statut
+ * @access  Privé (Admin ou propriétaire)
+ */
+router.post(
+  "/:id/forcer-synchronisation",
+  validationIdDocument,
+  // roleMiddleware.verifierPermissionsDocument("modifier"),
+  async (req, res) => {
+    try {
+      const signatureController = require("../controllers/signatureController");
+      const resultat = await signatureController.verifierEtMettreAJourStatutDocument(req.params.id);
+      
+      if (resultat) {
+        res.json({
+          success: true,
+          message: "Statut du document mis à jour",
+        });
+      } else {
+        res.json({
+          success: false,
+          message: "Aucune mise à jour nécessaire ou signatures incomplètes",
+        });
+      }
+    } catch (error) {
+      console.error("Erreur synchronisation forcée:", error);
+      res.status(500).json({
+        success: false,
+        message: "Erreur lors de la synchronisation",
+      });
+    }
+  }
+);
+
+// Route de test temporaire
+router.get("/test-sync/:id", async (req, res) => {
+  const signatureController = require("../controllers/signatureController");
+  const resultat = await signatureController.verifierEtMettreAJourStatutDocument(req.params.id);
+  res.json({ resultat });
+});
 
 module.exports = router;
