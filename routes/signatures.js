@@ -63,31 +63,14 @@ const validationIdSignature = [
  * @desc    Webhook pour recevoir les événements de Dropbox Sign
  * @access  Public (avec vérification de signature)
  */
-// router.post(
-//   "/webhook/dropbox-sign",
-//   // Pas de middleware d'authentification pour les webhooks
-//   (req, res, next) => {
-//     // Bypass auth pour les webhooks
-//     next();
-//   },
-//   signatureController.webhookDropboxSign
-// );
+
 router.post(
   "/webhook/dropbox-sign",
-  // ✅ IMPORTANT : Capturer le body brut pour vérifier la signature
+  // Capturer le body brut AVANT le parsing JSON
   express.raw({ 
-    type: 'application/json',
-    limit: '50mb'  // Ajustez selon vos besoins
+    type: ['application/json', 'application/x-www-form-urlencoded'],
+    limit: '10mb'
   }),
-  upload.none(),
-  (req, res, next) => {
-    // Debug les headers
-    console.log("📥 Headers reçus:", Object.keys(req.headers));
-    console.log("🔐 X-HelloSign-Signature:", req.get("X-HelloSign-Signature"));
-    console.log("📦 Body type:", typeof req.body);
-    console.log("📦 Body length:", req.body ? req.body.length : 'null');
-    next();
-  },
   signatureController.webhookDropboxSign
 );
 

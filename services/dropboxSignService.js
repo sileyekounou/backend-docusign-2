@@ -37,14 +37,6 @@ class DropboxSignService {
     try {
       const { titre, message, fichiers, signataires, documentId, options: customOptions = {} } = options;
 
-      // Préparer les signataires
-      // const signersData = signataires.map((signataire, index) => {
-      //   return DropboxSign.SubSigningOptions.init({
-      //     emailAddress: signataire.email,
-      //     name: `${signataire.prenom} ${signataire.nom}`,
-      //     order: signataire.ordre || index + 1,
-      //   });
-      // });
       const signersData = signataires.map((signataire, index) => {
         if (!signataire.email || !signataire.nom || !signataire.prenom) {
           throw new Error(`Données signataire incomplètes: ${JSON.stringify(signataire)}`);
@@ -79,18 +71,39 @@ class DropboxSignService {
         }
       }
       // Créer la demande SANS webhook en dev
+      // const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
+      //   title: titre,
+      //   subject: titre,
+      //   message: message || `Veuillez signer le document: ${titre}`,
+      //   signers: signersData,
+      //   files: filesData,
+      //   // webhookUrl: process.env.WEBHOOK_URL,
+      //   // testMode: customOptions.testMode ?? this.defaultOptions.testMode,
+        
+      //   // 🔧 WEBHOOK CONDITIONNEL
+      //   ...webhookConfig,
+        
+      //   clientId: process.env.DROPBOX_SIGN_CLIENT_ID,
+      //   metadata: {
+      //     document_id: documentId,
+      //     platform: "signature-platform",
+      //     environment: process.env.NODE_ENV,
+      //   },
+      // });
+      // Dans creerDemandeSignature, remplace cette partie :
+      
+      const webhookConfig = process.env.NODE_ENV === 'production' && process.env.WEBHOOK_URL 
+        ? { webhookUrl: process.env.WEBHOOK_URL }
+        : {};
+
       const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
         title: titre,
         subject: titre,
         message: message || `Veuillez signer le document: ${titre}`,
         signers: signersData,
         files: filesData,
-        // webhookUrl: process.env.WEBHOOK_URL,
-        // testMode: customOptions.testMode ?? this.defaultOptions.testMode,
-        
-        // 🔧 WEBHOOK CONDITIONNEL
-        ...webhookConfig,
-        
+        ...webhookConfig, // Ajouter la config webhook
+        testMode: customOptions.testMode ?? this.defaultOptions.testMode,
         clientId: process.env.DROPBOX_SIGN_CLIENT_ID,
         metadata: {
           document_id: documentId,
@@ -334,35 +347,70 @@ class DropboxSignService {
     }
   }
 
-  /**
-   * Vérifier la signature d'un webhook
-   */
-  // verifierSignatureWebhook(body, signature) {
+
+  // verifierSignatureWebhook(req) {
+  //   const event = JSON.parse(req.body.event); // car c'est une string JSON
+  //   const eventTime = event.event_time;
+  //   const eventHash = req.body.event_hash;
   //   const crypto = require("crypto");
-  //   const expectedSignature = crypto
-  //     .createHmac("md5", process.env.DROPBOX_SIGN_WEBHOOK_SECRET)
-  //     // .createHmac("sha256", process.env.DROPBOX_SIGN_WEBHOOK_SECRET)
-  //     .update(body)
-  //     .digest("base64");
-  //     // .digest("hex");
+  //   const expected = crypto
+  //     .createHash("sha256")
+  //     .update(eventTime + process.env.DROPBOX_SIGN_SECRET)
+  //     .digest("hex");
 
-  //   // console.log(`verifierSignatureWebhook: ${expectedSignature}`);
-
-  //   return `md5=${expectedSignature}` === signature;
+  //   return expected === eventHash;
   // }
-
   verifierSignatureWebhook(req) {
-    const event = JSON.parse(req.body.event); // car c'est une string JSON
-    const eventTime = event.event_time;
-    const eventHash = req.body.event_hash;
+  try {
     const crypto = require("crypto");
-    const expected = crypto
-      .createHash("sha256")
-      .update(eventTime + process.env.DROPBOX_SIGN_SECRET)
+    
+    // Récupérer le body brut
+    let bodyString;
+    if (Buffer.isBuffer(req.body)) {
+      bodyString = req.body.toString('utf8');
+    } else if (typeof req.body === 'string') {
+      bodyString = req.body;
+    } else {
+      bodyString = JSON.stringify(req.body);
+    }
+
+    // Pour Dropbox Sign, la vérification se fait avec le header X-HelloSign-Signature
+    const signature = req.get("X-HelloSign-Signature") || 
+                     req.get("x-hellosign-signature") ||
+                     req.headers['x-hellosign-signature'];
+
+    if (!signature) {
+      console.error("❌ Signature manquante dans les headers");
+      return false;
+    }
+
+    // Calculer la signature attendue
+    const webhookSecret = process.env.DROPBOX_SIGN_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("❌ DROPBOX_SIGN_WEBHOOK_SECRET manquant");
+      return false;
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(bodyString)
       .digest("hex");
 
-    return expected === eventHash;
+    const receivedSignature = signature.replace('sha256=', '');
+    
+    console.log(`🔐 Signature reçue: ${receivedSignature}`);
+    console.log(`🔐 Signature attendue: ${expectedSignature}`);
+    
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedSignature, 'hex'),
+      Buffer.from(expectedSignature, 'hex')
+    );
+    
+  } catch (error) {
+    console.error("❌ Erreur vérification signature:", error);
+    return false;
   }
+}
 
   /**
    * Traiter un événement webhook
