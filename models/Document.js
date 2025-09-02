@@ -66,6 +66,14 @@ const documentSchema = new mongoose.Schema(
       },
       hash: String, // Hash du fichier pour vérifier l'intégrité
     },
+    
+    fichierSigne: {
+      nom: String,
+      chemin: String,
+      taille: Number,
+      dateCreation: Date,
+      hash: String, // Hash du fichier signé pour vérification d'intégrité
+    },
 
     // Créateur et propriétaire
     creeParUtilisateur: {

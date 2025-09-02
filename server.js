@@ -60,6 +60,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentRoutes);
 app.use("/api/signatures", signatureRoutes);
 app.use("/api/users", userRoutes);
+app.use("/uploads/signed", express.static(path.join(__dirname, "uploads/signed")));
 
 // Route de test
 app.get("/api/health", (req, res) => {

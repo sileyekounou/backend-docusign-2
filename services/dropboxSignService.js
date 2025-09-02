@@ -34,111 +34,128 @@ class DropboxSignService {
    */
 
   async creerDemandeSignature(options) {
-    try {
-      const { titre, message, fichiers, signataires, documentId, options: customOptions = {} } = options;
+  try {
+    const { titre, message, fichiers, signataires, documentId, options: customOptions = {} } = options;
 
-      const signersData = signataires.map((signataire, index) => {
-        if (!signataire.email || !signataire.nom || !signataire.prenom) {
-          throw new Error(`Données signataire incomplètes: ${JSON.stringify(signataire)}`);
-        }
-        
-        return DropboxSign.SubSigningOptions.init({
-          emailAddress: signataire.email.trim(),
-          name: `${signataire.prenom.trim()} ${signataire.nom.trim()}`,
-          order: signataire.ordre || index + 1,
-        });
-      });
+    console.log(`🚀 Création demande signature: ${titre}`);
 
-      // Préparer les fichiers (votre code actuel)
-      let filesData = []
-      // ✅ CORRIGER
-      for (const fichier of fichiers) {
-        try {
-          const fileBuffer = await fs.readFile(fichier.chemin);
-          
-          // Vérifier que le fichier n'est pas vide
-          if (fileBuffer.length === 0) {
-            throw new Error(`Fichier vide: ${fichier.nomOriginal}`);
-          }
-          
-          filesData.push({
-            name: fichier.nomOriginal,
-            file: fileBuffer, // Utiliser directement le Buffer
-          });
-        } catch (error) {
-          console.error(`Erreur lecture fichier ${fichier.chemin}:`, error);
-          throw new Error(`Impossible de lire le fichier: ${fichier.nomOriginal}`);
-        }
+    // 🔧 CORRECTION : Format correct pour les signataires
+    const signersData = signataires.map((signataire, index) => {
+      const signerData = {
+        email_address: signataire.email.trim(),  // ← email_address, pas emailAddress
+        name: `${signataire.prenom.trim()} ${signataire.nom.trim()}`,
+        order: signataire.ordre || index + 1,
+      };
+      
+      console.log(`👤 Signataire ${index + 1}:`, signerData);
+      return signerData;
+    });
+
+    // Préparer les fichiers avec Buffer
+    const fs = require("fs");
+    const filesData = [];
+    
+    for (const fichier of fichiers) {
+      console.log(`📁 Lecture fichier: ${fichier.chemin}`);
+      
+      if (!fs.existsSync(fichier.chemin)) {
+        throw new Error(`Fichier non trouvé: ${fichier.chemin}`);
       }
-      // Créer la demande SANS webhook en dev
-      // const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
-      //   title: titre,
-      //   subject: titre,
-      //   message: message || `Veuillez signer le document: ${titre}`,
-      //   signers: signersData,
-      //   files: filesData,
-      //   // webhookUrl: process.env.WEBHOOK_URL,
-      //   // testMode: customOptions.testMode ?? this.defaultOptions.testMode,
-        
-      //   // 🔧 WEBHOOK CONDITIONNEL
-      //   ...webhookConfig,
-        
-      //   clientId: process.env.DROPBOX_SIGN_CLIENT_ID,
-      //   metadata: {
-      //     document_id: documentId,
-      //     platform: "signature-platform",
-      //     environment: process.env.NODE_ENV,
-      //   },
-      // });
-      // Dans creerDemandeSignature, remplace cette partie :
+
+      const fileBuffer = fs.readFileSync(fichier.chemin);
       
-      const webhookConfig = process.env.NODE_ENV === 'production' && process.env.WEBHOOK_URL 
-        ? { webhookUrl: process.env.WEBHOOK_URL }
-        : {};
-
-      const signatureRequest = DropboxSign.SignatureRequestSendRequest.init({
-        title: titre,
-        subject: titre,
-        message: message || `Veuillez signer le document: ${titre}`,
-        signers: signersData,
-        files: filesData,
-        ...webhookConfig, // Ajouter la config webhook
-        testMode: customOptions.testMode ?? this.defaultOptions.testMode,
-        clientId: process.env.DROPBOX_SIGN_CLIENT_ID,
-        metadata: {
-          document_id: documentId,
-          platform: "signature-platform",
-          environment: process.env.NODE_ENV,
-        },
-      });
-
-      console.log("🚀 Envoi Dropbox Sign (sans webhook dev)...");
-      const response = await this.client.signatureRequestSend(signatureRequest);
-
-      console.log("✅ Demande créée sans problème de webhook !");
+      // Créer un objet avec les bonnes propriétés pour FormData
+      const fileObj = {
+        value: fileBuffer,
+        options: {
+          filename: fichier.nomOriginal,
+          contentType: 'application/pdf'
+        }
+      };
       
-      return {
-        success: true,
-        data: {
-          signatureRequestId: response.body.signatureRequest.signatureRequestId,
-          signers: response.body.signatureRequest.signatures.map((sig) => ({
-            signerId: sig.signatureId,
-            email: sig.signerEmailAddress,
-            name: sig.signerName,
-            statusCode: sig.statusCode,
-            signUrl: sig.signUrl,
-          })),
-        },
-      };
-
-    } catch (error) {
-      console.error("❌ Erreur (webhook résolu?):", error.message);
-      return {
-        success: false,
-        error: error.message,
-      };
+      filesData.push(fileObj);
+      console.log(`✅ Fichier préparé: ${fichier.nomOriginal} (${fileBuffer.length} bytes)`);
     }
+
+    // 🎯 UTILISER L'OBJET DE CONFIGURATION DIRECT (pas init())
+    const requestData = {
+      title: titre,
+      subject: titre,
+      message: message || `Veuillez signer le document: ${titre}`,
+      signers: signersData,  // Format simple, pas SubSigningOptions
+      files: filesData,
+      test_mode: 1,  // ← test_mode avec 1, pas testMode: true
+    };
+
+    // Ajouter le webhook si défini
+    if (process.env.WEBHOOK_URL) {
+      requestData.webhook_url = process.env.WEBHOOK_URL;  // ← webhook_url
+      console.log(`🔗 Webhook: ${requestData.webhook_url}`);
+    }
+
+    // Ajouter client_id si défini
+    if (process.env.DROPBOX_SIGN_CLIENT_ID) {
+      requestData.client_id = process.env.DROPBOX_SIGN_CLIENT_ID;  // ← client_id
+    }
+
+    console.log(`📦 Configuration finale:`, {
+      title: requestData.title,
+      signersCount: requestData.signers.length,
+      filesCount: requestData.files.length,
+      test_mode: requestData.test_mode,
+      webhook_url: !!requestData.webhook_url,
+    });
+
+    // 🔧 CRÉATION DIRECTE sans init()
+    const signatureRequest = new DropboxSign.SignatureRequestSendRequest();
+    
+    // Assigner les propriétés une par une
+    signatureRequest.title = requestData.title;
+    signatureRequest.subject = requestData.subject;
+    signatureRequest.message = requestData.message;
+    signatureRequest.signers = requestData.signers;
+    signatureRequest.files = requestData.files;
+    signatureRequest.testMode = true;  // Booléen pour testMode
+    
+    if (requestData.webhook_url) {
+      signatureRequest.webhookUrl = requestData.webhook_url;
+    }
+    
+    if (requestData.client_id) {
+      signatureRequest.clientId = requestData.client_id;
+    }
+
+    console.log("📤 Envoi à Dropbox Sign...");
+    const response = await this.client.signatureRequestSend(signatureRequest);
+
+    console.log("✅ Demande créée avec succès !");
+    console.log(`📄 ID: ${response.body.signatureRequest.signatureRequestId}`);
+    
+    return {
+      success: true,
+      data: {
+        signatureRequestId: response.body.signatureRequest.signatureRequestId,
+        signers: response.body.signatureRequest.signatures.map((sig) => ({
+          signerId: sig.signatureId,
+          email: sig.signerEmailAddress,
+          name: sig.signerName,
+          statusCode: sig.statusCode,
+          signUrl: sig.signUrl,
+        })),
+      },
+    };
+
+  } catch (error) {
+    console.error("❌ Erreur création demande signature:", error);
+    console.error("❌ Détails erreur:", error.body?.error || error.message);
+    
+    return {
+      success: false,
+      error: error.message,
+      details: error.body?.error?.errorMsg || null,
+    };
   }
+}
 
   /**
    * Créer une demande de signature intégrée (embedded)
@@ -228,6 +245,7 @@ class DropboxSignService {
       };
     }
   }
+  
 
   /**
    * Obtenir le statut d'une demande de signature
@@ -277,30 +295,39 @@ class DropboxSignService {
    * Télécharger le document signé
    */
   async telechargerDocumentSigne(signatureRequestId, destinationPath) {
-    try {
-      const response = await this.client.signatureRequestFiles(
-        signatureRequestId,
-        "pdf"
-      );
+  try {
+    console.log(`📥 Téléchargement document signé: ${signatureRequestId}`);
+    
+    const response = await this.client.signatureRequestFiles(
+      signatureRequestId,
+      "pdf"
+    );
 
-      // Sauvegarder le fichier
-      await fs.writeFile(destinationPath, response.body);
+    // Créer le dossier de destination s'il n'existe pas
+    const fs = require("fs").promises;
+    const path = require("path");
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
 
-      return {
-        success: true,
-        data: {
-          filePath: destinationPath,
-          size: response.body.length,
-        },
-      };
-    } catch (error) {
-      console.error("Erreur téléchargement document:", error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
+    // Sauvegarder le fichier
+    await fs.writeFile(destinationPath, response.body);
+
+    console.log(`✅ Document signé sauvegardé: ${destinationPath}`);
+    
+    return {
+      success: true,
+      data: {
+        filePath: destinationPath,
+        size: response.body.length,
+      },
+    };
+  } catch (error) {
+    console.error("❌ Erreur téléchargement document:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
   }
+}
 
   /**
    * Envoyer un rappel
@@ -347,115 +374,170 @@ class DropboxSignService {
     }
   }
 
+  
+  // Dans dropboxSignService.js, dans traiterEvenementWebhook
+  async traiterEvenementWebhook(eventData) {
+    try {
+      const { event_type, event_time } = eventData.event;
+      
+      console.log(`🎯 Traitement événement: ${event_type}`);
+      
+      switch (event_type) {
+        case "callback_test":
+          console.log("✅ Test webhook réussi !");
+          return { success: true, event: "callback_test" };
+
+        case "signature_request_sent": {
+          const signatureRequest = eventData.signature_request;
+          return await this.gererEvenementEnvoi(signatureRequest, event_time);
+        }
+        case "signature_request_viewed":
+          return await this.gererEvenementVue(eventData.signature_request, event_time);
+
+        case "signature_request_signed":
+          return await this.gererEvenementSignature(eventData.signature_request, event_time);
+
+        case "signature_request_all_signed":
+          return await this.gererEvenementToutSigne(eventData.signature_request, event_time);
+
+        case "signature_request_declined":
+          return await this.gererEvenementRefus(eventData.signature_request, event_time);
+
+        case "signature_request_error":
+          return await this.gererEvenementErreur(eventData.signature_request, event_time);
+
+        default:
+          console.log(`⚠️ Événement non géré: ${event_type}`);
+          return { success: true, handled: false };
+      }
+    } catch (error) {
+      console.error("❌ Erreur traitement webhook:", error);
+      return { success: false, error: error.message };
+    }
+  }
 
   // verifierSignatureWebhook(req) {
-  //   const event = JSON.parse(req.body.event); // car c'est une string JSON
-  //   const eventTime = event.event_time;
-  //   const eventHash = req.body.event_hash;
-  //   const crypto = require("crypto");
-  //   const expected = crypto
-  //     .createHash("sha256")
-  //     .update(eventTime + process.env.DROPBOX_SIGN_SECRET)
-  //     .digest("hex");
+  //   try {
+  //     const crypto = require("crypto");
+      
+  //     // Récupérer les signatures des headers
+  //     const receivedSha256 = req.get("content-sha256");
+  //     const receivedMd5 = req.get("content-md5");
+      
+  //     // Récupérer le body JSON brut
+  //     const eventJson = req.body.json;
+  //     if (!eventJson) {
+  //       console.error("❌ Données JSON manquantes");
+  //       return false;
+  //     }
 
-  //   return expected === eventHash;
+  //     console.log(`📦 Body JSON: ${eventJson}`);
+
+  //     // Vérification avec SHA256 (priorité)
+  //     if (receivedSha256) {
+  //       const expectedSha256 = crypto
+  //         .createHash("sha256")
+  //         .update(eventJson)
+  //         .digest("hex");
+
+  //       // Décoder le base64 reçu
+  //       const decodedReceivedSha256 = Buffer.from(receivedSha256, 'base64').toString('hex');
+        
+  //       console.log(`🔐 SHA256 reçu (base64): ${receivedSha256}`);
+  //       console.log(`🔐 SHA256 reçu (hex): ${decodedReceivedSha256}`);
+  //       console.log(`🔐 SHA256 calculé: ${expectedSha256}`);
+        
+  //       if (decodedReceivedSha256 === expectedSha256) {
+  //         console.log("✅ Vérification SHA256 réussie");
+  //         return true;
+  //       }
+  //     }
+
+  //     // Vérification avec MD5 (fallback)
+  //     if (receivedMd5) {
+  //       const expectedMd5 = crypto
+  //         .createHash("md5")
+  //         .update(eventJson)
+  //         .digest("hex");
+
+  //       // Décoder le base64 reçu
+  //       const decodedReceivedMd5 = Buffer.from(receivedMd5, 'base64').toString('hex');
+        
+  //       console.log(`🔐 MD5 reçu (base64): ${receivedMd5}`);
+  //       console.log(`🔐 MD5 reçu (hex): ${decodedReceivedMd5}`);
+  //       console.log(`🔐 MD5 calculé: ${expectedMd5}`);
+        
+  //       if (decodedReceivedMd5 === expectedMd5) {
+  //         console.log("✅ Vérification MD5 réussie");
+  //         return true;
+  //       }
+  //     }
+
+  //     console.error("❌ Aucune vérification n'a réussi");
+  //     return false;
+      
+  //   } catch (error) {
+  //     console.error("❌ Erreur vérification signature:", error);
+  //     return false;
+  //   }
   // }
+ 
+ 
+
+  // Méthodes privées pour gérer les événements
+  
   verifierSignatureWebhook(req) {
   try {
     const crypto = require("crypto");
     
-    // Récupérer le body brut
-    let bodyString;
-    if (Buffer.isBuffer(req.body)) {
-      bodyString = req.body.toString('utf8');
-    } else if (typeof req.body === 'string') {
-      bodyString = req.body;
-    } else {
-      bodyString = JSON.stringify(req.body);
-    }
-
-    // Pour Dropbox Sign, la vérification se fait avec le header X-HelloSign-Signature
-    const signature = req.get("X-HelloSign-Signature") || 
-                     req.get("x-hellosign-signature") ||
-                     req.headers['x-hellosign-signature'];
-
-    if (!signature) {
-      console.error("❌ Signature manquante dans les headers");
+    const eventJson = req.body.json;
+    if (!eventJson) {
+      console.error("❌ Données JSON manquantes");
       return false;
     }
 
-    // Calculer la signature attendue
-    const webhookSecret = process.env.DROPBOX_SIGN_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      console.error("❌ DROPBOX_SIGN_WEBHOOK_SECRET manquant");
+    const eventData = JSON.parse(eventJson);
+    const event = eventData.event;
+    
+    if (!event || !event.event_time || !event.event_hash) {
+      console.error("❌ Structure d'événement invalide");
       return false;
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(bodyString)
-      .digest("hex");
+    // Méthode alternative avec API key
+    const apiKey = process.env.DROPBOX_SIGN_API_KEY;
+    if (!apiKey) {
+      console.error("❌ DROPBOX_SIGN_API_KEY manquant");
+      return false;
+    }
 
-    const receivedSignature = signature.replace('sha256=', '');
-    
-    console.log(`🔐 Signature reçue: ${receivedSignature}`);
-    console.log(`🔐 Signature attendue: ${expectedSignature}`);
-    
-    return crypto.timingSafeEqual(
-      Buffer.from(receivedSignature, 'hex'),
-      Buffer.from(expectedSignature, 'hex')
-    );
+    // Essayer différentes combinaisons
+    const combinations = [
+      event.event_time + apiKey,
+      apiKey + event.event_time,
+      eventJson + apiKey,
+      apiKey + eventJson
+    ];
+
+    for (const combo of combinations) {
+      const hash = crypto.createHash("sha256").update(combo).digest("hex");
+      console.log(`🔐 Test combo hash: ${hash} (attendu: ${event.event_hash})`);
+      
+      if (hash === event.event_hash) {
+        console.log("✅ Vérification réussie avec combo");
+        return true;
+      }
+    }
+
+    console.error("❌ Aucune combinaison n'a fonctionné");
+    return false;
     
   } catch (error) {
     console.error("❌ Erreur vérification signature:", error);
     return false;
   }
 }
-
-  /**
-   * Traiter un événement webhook
-   */
-  async traiterEvenementWebhook(eventData) {
-    try {
-      const { event_type, event_time } = eventData.event;
-      const signatureRequest = eventData.signature_request;
-
-      switch (event_type) {
-        case "signature_request_sent":
-          return await this.gererEvenementEnvoi(signatureRequest, event_time);
-
-        case "signature_request_viewed":
-          return await this.gererEvenementVue(signatureRequest, event_time);
-
-        case "signature_request_signed":
-          return await this.gererEvenementSignature(
-            signatureRequest,
-            event_time
-          );
-
-        case "signature_request_all_signed":
-          return await this.gererEvenementToutSigne(
-            signatureRequest,
-            event_time
-          );
-
-        case "signature_request_declined":
-          return await this.gererEvenementRefus(signatureRequest, event_time);
-
-        case "signature_request_error":
-          return await this.gererEvenementErreur(signatureRequest, event_time);
-
-        default:
-          console.log(`Événement non géré: ${event_type}`);
-          return { success: true, handled: false };
-      }
-    } catch (error) {
-      console.error("Erreur traitement webhook:", error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Méthodes privées pour gérer les événements
+  
   async gererEvenementEnvoi(signatureRequest, eventTime) {
     // Mettre à jour le statut des signatures
     console.log(`Demande envoyée: ${signatureRequest.signature_request_id}`);

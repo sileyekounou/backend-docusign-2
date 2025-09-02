@@ -66,11 +66,8 @@ const validationIdSignature = [
 
 router.post(
   "/webhook/dropbox-sign",
-  // Capturer le body brut AVANT le parsing JSON
-  express.raw({ 
-    type: ['application/json', 'application/x-www-form-urlencoded'],
-    limit: '10mb'
-  }),
+  // Pour multipart/form-data, on utilise multer
+  upload.none(),
   signatureController.webhookDropboxSign
 );
 

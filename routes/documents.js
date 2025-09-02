@@ -515,4 +515,135 @@ router.post(
   }
 );
 
+
+/**
+ * @route   GET /api/documents/:id/telecharger-signe
+ * @desc    Télécharger la version signée d'un document
+ * @access  Privé
+ */
+// router.get(
+//   "/:id/telecharger-signe",
+//   validationIdDocument,
+//   roleMiddleware.verifierPermissionsDocument("lire"),
+//   authMiddleware.journaliserAction("Téléchargement document signé"),
+//   async (req, res) => {
+//     try {
+//       const { id } = req.params;
+
+//       const document = await Document.findById(id);
+
+//       if (!document) {
+//         return res.status(404).json({
+//           success: false,
+//           message: "Document non trouvé",
+//         });
+//       }
+
+//       // Vérifier que le document est signé
+//       if (document.statut !== "signe") {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Document non signé",
+//         });
+//       }
+
+//       // Vérifier que le fichier signé existe
+//       if (!document.fichierSigne || !document.fichierSigne.chemin) {
+//         return res.status(404).json({
+//           success: false,
+//           message: "Fichier signé non disponible",
+//         });
+//       }
+
+//       const fs = require("fs").promises;
+      
+//       try {
+//         await fs.access(document.fichierSigne.chemin);
+//       } catch {
+//         return res.status(404).json({
+//           success: false,
+//           message: "Fichier signé introuvable sur le serveur",
+//         });
+//       }
+
+//       // Incrémenter le compteur de téléchargements
+//       document.nombreTelecharements += 1;
+//       await document.save();
+
+//       // Construire le nom de fichier pour le téléchargement
+//       const nomOriginalSansExt = path.parse(document.fichier.nomOriginal).name;
+//       const nomTelecharge = `${nomOriginalSansExt}_signed.pdf`;
+
+//       // Envoyer le fichier
+//       res.download(document.fichierSigne.chemin, nomTelecharge, (err) => {
+//         if (err) {
+//           console.error("Erreur téléchargement:", err);
+//           if (!res.headersSent) {
+//             res.status(500).json({
+//               success: false,
+//               message: "Erreur lors du téléchargement",
+//             });
+//           }
+//         }
+//       });
+//     } catch (error) {
+//       console.error("Erreur téléchargement document signé:", error);
+//       res.status(500).json({
+//         success: false,
+//         message: "Erreur lors du téléchargement du document signé",
+//       });
+//     }
+//   }
+// );
+
+
+/**
+ * @route   GET /api/documents/:id/telecharger-signe  
+ * @desc    Télécharger la version signée
+ * @access  Privé
+ */
+router.get(
+  "/:id/telecharger-signe",
+  validationIdDocument,
+  roleMiddleware.verifierPermissionsDocument("lire"),
+  async (req, res) => {
+    try {
+      const document = await Document.findById(req.params.id);
+
+      if (!document) {
+        return res.status(404).json({
+          success: false,
+          message: "Document non trouvé",
+        });
+      }
+
+      if (document.statut !== "signe" || !document.fichierSigne) {
+        return res.status(400).json({
+          success: false,
+          message: "Fichier signé non disponible",
+        });
+      }
+
+      const fs = require("fs");
+      if (!fs.existsSync(document.fichierSigne.chemin)) {
+        return res.status(404).json({
+          success: false,
+          message: "Fichier physique introuvable",
+        });
+      }
+
+      // Envoyer le fichier
+      const nomTelecharge = `${document.titre}_signed.pdf`;
+      res.download(document.fichierSigne.chemin, nomTelecharge);
+      
+    } catch (error) {
+      console.error("Erreur téléchargement:", error);
+      res.status(500).json({
+        success: false,
+        message: "Erreur téléchargement",
+      });
+    }
+  }
+);
+
 module.exports = router;
