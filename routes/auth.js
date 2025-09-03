@@ -62,6 +62,7 @@ const validationInscription = [
     }),
 
   // Validation conditionnelle pour l'établissement
+  // Dans validationInscription, remplace la validation établissement par :
   body("etablissement")
     .custom((value, { req }) => {
       if (req.body.role && req.body.role !== "etudiant") {
@@ -71,6 +72,10 @@ const validationInscription = [
         if (value.trim().length < 2 || value.trim().length > 100) {
           throw new Error("L'établissement doit contenir entre 2 et 100 caractères");
         }
+      }
+      // Pour les étudiants, établissement optionnel mais si fourni, doit être valide
+      if (value && value.trim() !== '' && value.trim().length < 2) {
+        throw new Error("L'établissement doit contenir au moins 2 caractères");
       }
       return true;
     }),

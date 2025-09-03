@@ -51,39 +51,34 @@ const userSchema = new mongoose.Schema(
       required: [true, "Le rôle est obligatoire"],
     },
 
-    // Informations professionnelles
+    // ✅ CORRECTION : Informations professionnelles avec validation conditionnelle améliorée
     etablissement: {
       type: String,
-      required: function () {
-        return this.role !== "etudiant";
-      },
+      // ❌ Supprimer required: function()
       validate: {
         validator: function (value) {
           if (this.role === "etudiant") {
-            // Pour les étudiants, peut être optionnel
+            // Pour les étudiants, établissement optionnel
             return true;
           }
-          // Pour les autres rôles, requis et non vide
+          // Pour les autres rôles, établissement requis et non vide
           return value && value.trim().length > 0;
         },
-        message: "Établissement requis pour ce rôle",
+        message: "L'établissement est obligatoire pour ce rôle",
       },
     },
     departement: String,
     specialite: String,
 
-    // Informations étudiant
+    // ✅ CORRECTION : Informations étudiant avec gestion des null
     numeroEtudiant: {
       type: String,
-      unique: true,
+      // ❌ Supprimer unique: true d'ici, on le gère dans l'index
       sparse: true, // Permet les valeurs null/undefined
-      required: function () {
-        return this.role === "etudiant";
-      },
       validate: {
         validator: function (value) {
-          // Si c'est un étudiant, le numéro est requis et non vide
           if (this.role === "etudiant") {
+            // Si c'est un étudiant, le numéro est requis et non vide
             return value && value.trim().length > 0;
           }
           // Si ce n'est pas un étudiant, doit être null ou undefined
@@ -94,8 +89,16 @@ const userSchema = new mongoose.Schema(
     },
     promotion: {
       type: String,
-      required: function () {
-        return this.role === "etudiant";
+      validate: {
+        validator: function (value) {
+          if (this.role === "etudiant") {
+            // Pour les étudiants, promotion optionnelle mais si fournie, non vide
+            return !value || value.trim().length > 0;
+          }
+          // Pour les non-étudiants, doit être null
+          return value === null || value === undefined;
+        },
+        message: "Promotion invalide pour ce rôle",
       },
     },
 
@@ -119,6 +122,11 @@ const userSchema = new mongoose.Schema(
     // Signature électronique
     signatureDropboxId: String, // ID utilisateur chez Dropbox Sign
 
+    // Tokens pour vérifications
+    tokenVerificationEmail: String,
+    tokenResetMotDePasse: String,
+    expirationTokenReset: Date,
+
     // Métadonnées
     dateCreation: {
       type: Date,
@@ -138,55 +146,68 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Index pour optimiser les recherches
+// ✅ CORRECTION : Index pour optimiser les recherches
 userSchema.index({ email: 1 }, { unique: true });
-// userSchema.index(
-//   { numeroEtudiant: 1 },
-//   {
-//     unique: true,
-//     sparse: true,
-//     partialFilterExpression: {
-//       numeroEtudiant: { $exists: true, $ne: null, $ne: "" },
-//     },
-//   }
-// );
 
+// ✅ INDEX CORRIGÉ : Unicité conditionnelle pour numeroEtudiant
 userSchema.index(
   { numeroEtudiant: 1 }, 
   { 
     unique: true, 
-    sparse: true  // Seulement sparse, pas de partialFilterExpression
+    partialFilterExpression: { 
+      numeroEtudiant: { 
+        $exists: true, 
+        $ne: null, 
+      } 
+    } 
   }
 );
+
 userSchema.index({ role: 1 });
 userSchema.index({ nom: "text", prenom: "text" });
 
-// Middleware pre-save pour hasher le mot de passe
+// ✅ MIDDLEWARE PRE-SAVE AMÉLIORÉ
 userSchema.pre("save", async function (next) {
   try {
-    // Nettoyer les champs selon le rôle
+    // ✅ Nettoyer et valider selon le rôle
     if (this.role === "etudiant") {
       // Pour les étudiants, s'assurer que le numéro étudiant est valide
       if (!this.numeroEtudiant || this.numeroEtudiant.trim() === "") {
         return next(new Error("Numéro étudiant requis pour les étudiants"));
       }
       this.numeroEtudiant = this.numeroEtudiant.trim();
+      
+      // Promotion optionnelle mais si fournie, nettoyée
+      if (this.promotion) {
+        this.promotion = this.promotion.trim() || null;
+      }
+      
+      // Établissement optionnel pour étudiants
+      if (this.etablissement) {
+        this.etablissement = this.etablissement.trim() || null;
+      }
     } else {
-      // Pour les non-étudiants, forcer à null
+      // ✅ Pour les non-étudiants, forcer à null et vérifier établissement
       this.numeroEtudiant = null;
       this.promotion = null;
+      
+      // Établissement requis pour non-étudiants
+      if (!this.etablissement || this.etablissement.trim() === "") {
+        return next(new Error("Établissement requis pour ce rôle"));
+      }
+      this.etablissement = this.etablissement.trim();
     }
 
-    // Nettoyer les chaînes vides
-    ["etablissement", "departement", "specialite", "telephone"].forEach(
-      (field) => {
-        if (this[field] === "") {
-          this[field] = null;
-        }
+    // ✅ Nettoyer les chaînes vides en null
+    ["departement", "specialite", "telephone"].forEach((field) => {
+      if (this[field] === "") {
+        this[field] = null;
+      } else if (this[field] && typeof this[field] === 'string') {
+        this[field] = this[field].trim() || null;
       }
-    );
+    });
 
-    // Hasher le mot de passe si modifié
+    // ✅ Hasher le mot de passe si modifié
     if (this.isModified("motDePasse")) {
       const salt = await bcrypt.genSalt(12);
       this.motDePasse = await bcrypt.hash(this.motDePasse, salt);
@@ -198,13 +219,14 @@ userSchema.pre("save", async function (next) {
     next(error);
   }
 });
+
 // Méthode pour comparer les mots de passe
 userSchema.methods.verifierMotDePasse = async function (motDePasseCandidat) {
   return await bcrypt.compare(motDePasseCandidat, this.motDePasse);
 };
 
+// ✅ MÉTHODE DE NETTOYAGE AMÉLIORÉE
 userSchema.methods.nettoyerDonnees = function () {
-  // Nettoyer selon le rôle
   if (this.role !== "etudiant") {
     this.numeroEtudiant = null;
     this.promotion = null;
@@ -232,6 +254,10 @@ userSchema.methods.toPublicJSON = function () {
     role: this.role,
     etablissement: this.etablissement,
     departement: this.departement,
+    specialite: this.specialite,
+    numeroEtudiant: this.numeroEtudiant,
+    promotion: this.promotion,
+    telephone: this.telephone,
     statut: this.statut,
     emailVerifie: this.emailVerifie,
     dateCreation: this.dateCreation,
